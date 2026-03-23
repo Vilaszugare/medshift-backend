@@ -221,23 +221,9 @@ def accept_applicant(shift_id: UUID, technician_id: UUID, db: Session = Depends(
     if assignment.status == models.ShiftAssignmentStatus.accepted:
         return {"message": "Already accepted"}
 
-    accepted_count = db.query(models.ShiftAssignment).filter(
-        models.ShiftAssignment.shift_id == shift_id,
-        models.ShiftAssignment.status == models.ShiftAssignmentStatus.accepted
-    ).count()
-
-    max_techs = shift.max_technicians or 1
-    if accepted_count >= max_techs:
-        raise HTTPException(status_code=400, detail=f"Shift is already full (max {max_techs})")
-
     assignment.status = models.ShiftAssignmentStatus.accepted
     assignment.accepted_at = datetime.utcnow()
     db.commit()
-
-    if accepted_count + 1 >= max_techs:
-        shift.status = models.ShiftStatus.filled
-        db.commit()
-
     db.refresh(assignment)
     return {"message": "Applicant accepted successfully", "status": assignment.status.value}
 
