@@ -4,6 +4,7 @@ from database import get_db
 import models
 import schemas
 from uuid import UUID
+from websocket_manager import notifier
 
 router = APIRouter(prefix="/api/technician", tags=["Technician Actions"])
 
@@ -79,7 +80,7 @@ def update_technician_profile(profile_data: schemas.TechnicianProfileUpdate, db:
     }
 
 @router.post("/shifts/{shift_id}/apply")
-def apply_for_shift(shift_id: UUID, apply_data: schemas.ShiftApplySchema, db: Session = Depends(get_db)):
+async def apply_for_shift(shift_id: UUID, apply_data: schemas.ShiftApplySchema, db: Session = Depends(get_db)):
     shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
@@ -101,6 +102,45 @@ def apply_for_shift(shift_id: UUID, apply_data: schemas.ShiftApplySchema, db: Se
     db.add(new_assignment)
     db.commit()
     db.refresh(new_assignment)
+
+    # Create Notification for the Manager
+    tech = db.query(models.TechnicianProfile).filter(models.TechnicianProfile.id == apply_data.technician_id).first()
+    tech_name = tech.full_name if tech else "A technician"
+    
+    new_notif = models.Notification(
+        user_id=shift.manager_id,
+        title="New Applicant",
+        body=f"{tech_name} applied for your shift: {shift.title}",
+        icon="user",
+        color="#0D9488" # Teal
+    )
+    db.add(new_notif)
+    db.commit()
+    db.refresh(new_notif)
+
+    # Insert a canned intro Message from technician → manager
+    new_message = models.Message(
+        shift_id=shift_id,
+        sender_id=apply_data.technician_id,
+        receiver_id=shift.manager_id,
+        content=f"Hi sir, I am {tech_name} and I am ready to work your shift for {shift.title}. Please approve me.",
+        is_read=False,
+    )
+    db.add(new_message)
+    db.commit()
+
+    # Push notification via WebSocket
+    notification_dict = {
+        "id": str(new_notif.id),
+        "title": new_notif.title,
+        "body": new_notif.body,
+        "icon": new_notif.icon,
+        "color": new_notif.color,
+        "is_read": False,
+        "tag": "New",
+        "time": "Just now"
+    }
+    await notifier.send_personal_message(notification_dict, str(shift.manager_id))
     
     return {
         "message": "Applied successfully",

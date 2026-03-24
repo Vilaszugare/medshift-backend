@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 import uuid
+import asyncio
 
 from database import get_db
 from datetime import datetime
 
 import models
 import schemas
+from websocket_manager import notifier
 
 router = APIRouter(prefix="/api", tags=["Manager Actions"])
 
@@ -58,6 +60,16 @@ def finalize_shift(shift_id: UUID, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(shift)
     return {"message": "Shift finalized and assigned", "status": shift.status.value, "accepted_count": accepted_count}
+
+@router.put("/shifts/{shift_id}/archive")
+def archive_shift(shift_id: UUID, db: Session = Depends(get_db)):
+    shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    shift.status = models.ShiftStatus.archived
+    db.commit()
+    db.refresh(shift)
+    return {"message": "Shift permanently archived", "status": shift.status.value}
 
 @router.put("/shifts/{shift_id}/cancel")
 def cancel_shift(shift_id: UUID, db: Session = Depends(get_db)):
@@ -223,8 +235,37 @@ def accept_applicant(shift_id: UUID, technician_id: UUID, db: Session = Depends(
 
     assignment.status = models.ShiftAssignmentStatus.accepted
     assignment.accepted_at = datetime.utcnow()
+
+    # ── Notify the technician ────────────────────────────────────────────────
+    notif = models.Notification(
+        user_id=technician_id,
+        title="🎉 Shift Approved!",
+        body=f"The manager accepted your application for: {shift.title}",
+        icon="check",
+        color="#0D9488",
+    )
+    db.add(notif)
     db.commit()
     db.refresh(assignment)
+    db.refresh(notif)
+
+    # Fire-and-forget WebSocket push to the technician
+    import asyncio
+    notif_payload = {
+        "id": str(notif.id),
+        "title": notif.title,
+        "body": notif.body,
+        "icon": notif.icon,
+        "color": notif.color,
+        "is_read": False,
+    }
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(notifier.send_to_user(str(technician_id), notif_payload))
+    except Exception:
+        pass  # WS push is best-effort
+
     return {"message": "Applicant accepted successfully", "status": assignment.status.value}
 
 @router.put("/shifts/{shift_id}/applicants/{technician_id}/reject")

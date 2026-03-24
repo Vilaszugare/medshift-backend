@@ -14,6 +14,7 @@ class ShiftStatus(str, enum.Enum):
     filled = "filled"
     completed = "completed"
     cancelled = "cancelled"
+    archived = "archived"
 
 class ShiftAssignmentStatus(str, enum.Enum):
     pending = "pending"
@@ -152,3 +153,33 @@ class Transaction(Base, TimestampMixin):
     
     manager = relationship("ManagerProfile")
     technician = relationship("TechnicianProfile")
+
+
+class Notification(Base, TimestampMixin):
+    __tablename__ = "notifications"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), index=True, nullable=False)  # Unified recipient ID
+    title = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    icon = Column(String(50), nullable=True)
+    color = Column(String(50), nullable=True)
+    is_read = Column(Boolean, default=False)
+
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    receiver_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    shift = relationship("Shift")
+
+class SuggestedReply(Base):
+    __tablename__ = "suggested_replies"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    role = Column(String(50), nullable=False, index=True)   # e.g. "manager"
+    content = Column(String(500), nullable=False)
+
