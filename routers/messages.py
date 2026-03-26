@@ -116,16 +116,33 @@ def send_reply(payload: ReplyPayload, db: Session = Depends(get_db)):
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            loop.create_task(notifier.send_to_user(str(payload.receiver_id), {
+            # Send notification
+            loop.create_task(notifier.send_personal_message({
+                "type": "notification",
                 "id": str(notif.id),
                 "title": notif.title,
                 "body": notif.body,
                 "icon": notif.icon,
                 "color": notif.color,
                 "is_read": False,
-            }))
+            }, str(payload.receiver_id)))
+            
+            # Also send the actual message data for live chat update
+            loop.create_task(notifier.send_personal_message({
+                "type": "new_message",
+                "message": {
+                    "id": str(new_msg.id),
+                    "shift_id": str(new_msg.shift_id),
+                    "sender_id": str(new_msg.sender_id),
+                    "receiver_id": str(new_msg.receiver_id),
+                    "content": new_msg.content,
+                    "is_read": new_msg.is_read,
+                    "created_at": new_msg.created_at.isoformat(),
+                }
+            }, str(payload.receiver_id)))
     except Exception:
         pass
+
 
     return {"message": "Reply sent", "id": str(new_msg.id)}
 
