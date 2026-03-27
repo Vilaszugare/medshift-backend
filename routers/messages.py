@@ -23,38 +23,40 @@ class ReplyPayload(BaseModel):
 
 @router.get("/manager/{manager_id}")
 def get_messages_for_manager(manager_id: UUID, db: Session = Depends(get_db)):
-    """Fetch all messages where the manager is the receiver."""
-    msgs = (
-        db.query(models.Message)
+    """Fetch all messages where the manager is the receiver — single JOIN query."""
+    from sqlalchemy import UUID as SQLUUID
+
+    rows = (
+        db.query(
+            models.Message,
+            models.TechnicianProfile.full_name.label("sender_name"),
+            models.Shift.title.label("shift_title"),
+        )
+        .outerjoin(
+            models.TechnicianProfile,
+            models.TechnicianProfile.id == models.Message.sender_id,
+        )
+        .outerjoin(models.Shift, models.Shift.id == models.Message.shift_id)
         .filter(models.Message.receiver_id == manager_id)
         .order_by(models.Message.created_at.desc())
         .all()
     )
 
-    results = []
-    for m in msgs:
-        # Resolve sender name
-        tech = db.query(models.TechnicianProfile).filter(
-            models.TechnicianProfile.id == m.sender_id
-        ).first()
-        sender_name = tech.full_name if tech else "Unknown Technician"
-
-        # Resolve shift title
-        shift = db.query(models.Shift).filter(models.Shift.id == m.shift_id).first()
-        shift_title = shift.title if shift else "Unknown Shift"
-
-        results.append({
+    return [
+        {
             "id": str(m.id),
             "shift_id": str(m.shift_id),
-            "shift_title": shift_title,
+            "shift_title": shift_title or "Unknown Shift",
             "sender_id": str(m.sender_id),
-            "sender_name": sender_name,
+            "sender_name": sender_name or "Unknown Technician",
             "receiver_id": str(m.receiver_id),
             "content": m.content,
             "is_read": m.is_read,
             "created_at": m.created_at.isoformat(),
-        })
-    return results
+        }
+        for m, sender_name, shift_title in rows
+    ]
+
 
 
 @router.get("/suggested-replies/manager")
@@ -111,40 +113,56 @@ def send_reply(payload: ReplyPayload, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_msg)
 
-    # Best-effort WebSocket push
+    # ── Real-time WebSocket push ──────────────────────────────────────────────
+    # NOTE: send_reply is a SYNC route (runs in a threadpool).
+    # We MUST use run_coroutine_threadsafe to schedule coroutines onto the
+    # main async event loop — loop.create_task() silently fails in sync context.
     import asyncio
     try:
         loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Send notification
-            loop.create_task(notifier.send_personal_message({
-                "type": "notification",
-                "id": str(notif.id),
-                "title": notif.title,
-                "body": notif.body,
-                "icon": notif.icon,
-                "color": notif.color,
-                "is_read": False,
-            }, str(payload.receiver_id)))
-            
-            # Also send the actual message data for live chat update
-            loop.create_task(notifier.send_personal_message({
-                "type": "new_message",
-                "message": {
-                    "id": str(new_msg.id),
-                    "shift_id": str(new_msg.shift_id),
-                    "sender_id": str(new_msg.sender_id),
-                    "receiver_id": str(new_msg.receiver_id),
-                    "content": new_msg.content,
-                    "is_read": new_msg.is_read,
-                    "created_at": new_msg.created_at.isoformat(),
-                }
-            }, str(payload.receiver_id)))
-    except Exception:
-        pass
+        receiver_str = str(payload.receiver_id)
 
+        # Push notification object
+        asyncio.run_coroutine_threadsafe(
+            notifier.send_personal_message(
+                {
+                    "type": "notification",
+                    "id": str(notif.id),
+                    "title": notif.title,
+                    "body": notif.body,
+                    "icon": notif.icon,
+                    "color": notif.color,
+                    "is_read": False,
+                },
+                receiver_str,
+            ),
+            loop,
+        )
+
+        # Push the actual message data so the chat thread updates instantly
+        asyncio.run_coroutine_threadsafe(
+            notifier.send_personal_message(
+                {
+                    "type": "new_message",
+                    "message": {
+                        "id": str(new_msg.id),
+                        "shift_id": str(new_msg.shift_id),
+                        "sender_id": str(new_msg.sender_id),
+                        "receiver_id": str(new_msg.receiver_id),
+                        "content": new_msg.content,
+                        "is_read": new_msg.is_read,
+                        "created_at": new_msg.created_at.isoformat(),
+                    },
+                },
+                receiver_str,
+            ),
+            loop,
+        )
+    except Exception as e:
+        print(f"[WS push error] {e}")
 
     return {"message": "Reply sent", "id": str(new_msg.id)}
+
 
 
 @router.get("/technician/{tech_id}")
