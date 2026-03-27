@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models import TechnicianProfile, ManagerProfile
-from schemas import TechnicianRegisterRequest, LoginRequest
+from models import TechnicianProfile, ManagerProfile, Hospital
+from schemas import TechnicianRegisterRequest, LoginRequest, ManagerRegisterRequest
 import hashlib
 import uuid
 import bcrypt
@@ -54,6 +54,53 @@ def register_technician(tech_data: TechnicianRegisterRequest, db: Session = Depe
             "email": new_profile.email,
             "full_name": new_profile.full_name, 
             "role": "technician"
+        }
+    }
+
+@router.post("/register/manager", status_code=status.HTTP_201_CREATED)
+def register_manager(manager_data: ManagerRegisterRequest, db: Session = Depends(get_db)):
+    # Check if email exists in ManagerProfile
+    if db.query(ManagerProfile).filter(ManagerProfile.email == manager_data.email).first():
+        raise HTTPException(status_code=400, detail="Manager email already registered")
+    
+    # Find or create Hospital
+    hospital = db.query(Hospital).filter(Hospital.name == manager_data.hospital_name).first()
+    if not hospital:
+        hospital = Hospital(
+            name=manager_data.hospital_name,
+            address=manager_data.hospital_address,
+            is_verified=True # Auto-verify for now as per seed patterns
+        )
+        db.add(hospital)
+        db.commit()
+        db.refresh(hospital)
+    
+    # Hash password using bcrypt for managers (more secure, consistent with seed_managers.py)
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(manager_data.password.encode('utf-8'), salt).decode('utf-8')
+    
+    # Create ManagerProfile
+    new_manager = ManagerProfile(
+        email=manager_data.email,
+        password_hash=hashed_password,
+        hospital_id=hospital.id,
+        first_name=manager_data.first_name,
+        last_name=manager_data.last_name,
+        job_title=manager_data.job_title or "Hospital Manager",
+        mobile_number=manager_data.mobile_number
+    )
+    db.add(new_manager)
+    db.commit()
+    db.refresh(new_manager)
+    
+    return {
+        "message": "Manager registered successfully",
+        "user": {
+            "id": str(new_manager.id),
+            "email": new_manager.email,
+            "full_name": f"{new_manager.first_name} {new_manager.last_name}",
+            "role": "manager",
+            "hospital": hospital.name
         }
     }
 
