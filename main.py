@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db, engine, SessionLocal
 import models
 from fastapi.middleware.cors import CORSMiddleware
-from routers import manager_dashboard, manager_actions, auth, technician_actions, messages
+from routers import manager_dashboard, manager_actions, auth, technician_actions, messages, otp
 from fastapi import WebSocket, WebSocketDisconnect
 from websocket_manager import notifier
 from uuid import UUID
@@ -75,12 +75,13 @@ app.include_router(manager_dashboard.router)
 app.include_router(manager_actions.router)
 app.include_router(technician_actions.router)
 app.include_router(messages.router)
+app.include_router(otp.router)
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def read_root():
     return {"message": "Welcome to the MedShift API"}
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
     return {"status": "ok", "message": "Backend is awake"}
 
@@ -239,3 +240,9 @@ def get_notifications(user_id: str, db: Session = Depends(get_db)):
             "created_at": n.created_at.isoformat()
         } for n in notifs
     ]
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
+

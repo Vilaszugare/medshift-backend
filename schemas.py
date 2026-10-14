@@ -14,11 +14,12 @@ class ShiftApplySchema(BaseModel):
 
 class TechnicianRegisterRequest(BaseModel):
     full_name: str
-    mobile_number: str
     email: str
     password: str
+    mobile_number: Optional[str] = None
     id_document: Optional[str] = None
     certificate: Optional[str] = None
+    otp: Optional[str] = None
 
 class ManagerRegisterRequest(BaseModel):
     first_name: str

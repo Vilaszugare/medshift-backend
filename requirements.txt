@@ -6,3 +6,5 @@ psycopg[binary]
 bcrypt
 python-dotenv
 httpx
+redis
+email-validator

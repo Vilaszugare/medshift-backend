@@ -21,14 +21,24 @@ def get_password_hash(password: str) -> str:
     # Hash for demo purposes (newly created technicians keep this fallback or we upgrade them too)
     return hashlib.sha256(password.encode()).hexdigest()
 
+from routers.otp import is_email_verified, verify_stored_otp
+
 @router.post("/register/technician", status_code=status.HTTP_201_CREATED)
 def register_technician(tech_data: TechnicianRegisterRequest, db: Session = Depends(get_db)):
+    # Verify Email via OTP
+    if not is_email_verified(tech_data.email):
+        if tech_data.otp:
+            if not verify_stored_otp(tech_data.email, tech_data.otp):
+                raise HTTPException(status_code=400, detail="Invalid or expired OTP. Please verify your email.")
+        else:
+            raise HTTPException(status_code=400, detail="Email address must be verified via OTP before registration.")
+
     # Check if email exists
     if db.query(TechnicianProfile).filter(TechnicianProfile.email == tech_data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
         
-    # Check if mobile exists
-    if db.query(TechnicianProfile).filter(TechnicianProfile.mobile_number == tech_data.mobile_number).first():
+    # Check if mobile exists (mobile is optional)
+    if tech_data.mobile_number and db.query(TechnicianProfile).filter(TechnicianProfile.mobile_number == tech_data.mobile_number).first():
         raise HTTPException(status_code=400, detail="Mobile number already registered")
     
     # Create Profile
