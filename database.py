@@ -16,7 +16,20 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 # Initialize the SQLAlchemy Engine
 # pool_pre_ping=True checks the connection before pooling to prevent stale connection errors
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+from sqlalchemy.pool import NullPool
+connect_args = {}
+poolclass = None
+
+if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+elif DATABASE_URL and "6543" in DATABASE_URL:
+    connect_args = {"client_encoding": "utf8"}
+    poolclass = NullPool
+
+if poolclass:
+    engine = create_engine(DATABASE_URL, connect_args=connect_args, poolclass=poolclass)
+else:
+    engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
 
 # SessionLocal is the factory for new Session objects (database connections)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

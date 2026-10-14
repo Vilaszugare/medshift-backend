@@ -131,6 +131,7 @@ async def apply_for_shift(shift_id: UUID, apply_data: schemas.ShiftApplySchema, 
 
     # Push notification via WebSocket
     notification_dict = {
+        "type": "notification",
         "id": str(new_notif.id),
         "title": new_notif.title,
         "body": new_notif.body,
@@ -140,7 +141,27 @@ async def apply_for_shift(shift_id: UUID, apply_data: schemas.ShiftApplySchema, 
         "tag": "New",
         "time": "Just now"
     }
-    await notifier.send_personal_message(notification_dict, str(shift.manager_id))
+    try:
+        await notifier.send_personal_message(notification_dict, str(shift.manager_id))
+        
+        # Also notify manager inbox of the initial application message
+        await notifier.send_personal_message(
+            {
+                "type": "new_message",
+                "message": {
+                    "id": str(new_message.id),
+                    "shift_id": str(new_message.shift_id),
+                    "sender_id": str(new_message.sender_id),
+                    "receiver_id": str(new_message.receiver_id),
+                    "content": new_message.content,
+                    "is_read": new_message.is_read,
+                    "created_at": new_message.created_at.isoformat(),
+                },
+            },
+            str(shift.manager_id),
+        )
+    except Exception as e:
+        print(f"[WS push error] {e}")
     
     return {
         "message": "Applied successfully",

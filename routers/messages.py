@@ -42,8 +42,14 @@ def get_messages_for_manager(manager_id: UUID, db: Session = Depends(get_db)):
         .all()
     )
 
-    return [
-        {
+    seen = set()
+    results = []
+    for m, sender_name, shift_title in rows:
+        thread_key = f"{m.shift_id}_{m.sender_id}"
+        if thread_key in seen:
+            continue
+        seen.add(thread_key)
+        results.append({
             "id": str(m.id),
             "shift_id": str(m.shift_id),
             "shift_title": shift_title or "Unknown Shift",
@@ -53,9 +59,9 @@ def get_messages_for_manager(manager_id: UUID, db: Session = Depends(get_db)):
             "content": m.content,
             "is_read": m.is_read,
             "created_at": m.created_at.isoformat(),
-        }
-        for m, sender_name, shift_title in rows
-    ]
+        })
+
+    return results
 
 
 
@@ -82,8 +88,8 @@ def get_suggested_replies_technician(db: Session = Depends(get_db)):
 
 
 @router.post("/reply")
-def send_reply(payload: ReplyPayload, db: Session = Depends(get_db)):
-    """Save a manager's reply message and notify the receiver."""
+async def send_reply(payload: ReplyPayload, db: Session = Depends(get_db)):
+    """Save a reply message and notify the receiver over WebSocket reliably."""
     new_msg = models.Message(
         shift_id=payload.shift_id,
         sender_id=payload.sender_id,
@@ -105,7 +111,7 @@ def send_reply(payload: ReplyPayload, db: Session = Depends(get_db)):
     notif = models.Notification(
         user_id=payload.receiver_id,
         title="💬 New Message",
-        body="You have a new message regarding your shift.",
+        body=payload.content[:100] if payload.content else "You have a new message.",
         icon="check",
         color="#0D9488",
     )
@@ -113,50 +119,38 @@ def send_reply(payload: ReplyPayload, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_msg)
 
-    # ── Real-time WebSocket push ──────────────────────────────────────────────
-    # NOTE: send_reply is a SYNC route (runs in a threadpool).
-    # We MUST use run_coroutine_threadsafe to schedule coroutines onto the
-    # main async event loop — loop.create_task() silently fails in sync context.
-    import asyncio
+    # ── Real-time WebSocket push (direct async await) ─────────────────────────
+    receiver_str = str(payload.receiver_id)
     try:
-        loop = asyncio.get_event_loop()
-        receiver_str = str(payload.receiver_id)
-
         # Push notification object
-        asyncio.run_coroutine_threadsafe(
-            notifier.send_personal_message(
-                {
-                    "type": "notification",
-                    "id": str(notif.id),
-                    "title": notif.title,
-                    "body": notif.body,
-                    "icon": notif.icon,
-                    "color": notif.color,
-                    "is_read": False,
-                },
-                receiver_str,
-            ),
-            loop,
+        await notifier.send_personal_message(
+            {
+                "type": "notification",
+                "id": str(notif.id),
+                "title": notif.title,
+                "body": notif.body,
+                "icon": notif.icon,
+                "color": notif.color,
+                "is_read": False,
+            },
+            receiver_str,
         )
 
         # Push the actual message data so the chat thread updates instantly
-        asyncio.run_coroutine_threadsafe(
-            notifier.send_personal_message(
-                {
-                    "type": "new_message",
-                    "message": {
-                        "id": str(new_msg.id),
-                        "shift_id": str(new_msg.shift_id),
-                        "sender_id": str(new_msg.sender_id),
-                        "receiver_id": str(new_msg.receiver_id),
-                        "content": new_msg.content,
-                        "is_read": new_msg.is_read,
-                        "created_at": new_msg.created_at.isoformat(),
-                    },
+        await notifier.send_personal_message(
+            {
+                "type": "new_message",
+                "message": {
+                    "id": str(new_msg.id),
+                    "shift_id": str(new_msg.shift_id),
+                    "sender_id": str(new_msg.sender_id),
+                    "receiver_id": str(new_msg.receiver_id),
+                    "content": new_msg.content,
+                    "is_read": new_msg.is_read,
+                    "created_at": new_msg.created_at.isoformat(),
                 },
-                receiver_str,
-            ),
-            loop,
+            },
+            receiver_str,
         )
     except Exception as e:
         print(f"[WS push error] {e}")

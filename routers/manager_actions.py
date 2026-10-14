@@ -184,6 +184,8 @@ def get_available_shifts(db: Session = Depends(get_db)):
             
         result.append({
             "id": shift.id,
+            "manager_id": str(shift.manager_id),
+            "hospital_id": str(manager.hospital_id) if manager else None,
             "title": shift.title,
             "department": shift.department,
             "start_time": shift.start_time,
@@ -218,7 +220,7 @@ def get_shift_applicants(shift_id: UUID, db: Session = Depends(get_db)):
     return result
 
 @router.put("/shifts/{shift_id}/applicants/{technician_id}/accept")
-def accept_applicant(shift_id: UUID, technician_id: UUID, db: Session = Depends(get_db)):
+async def accept_applicant(shift_id: UUID, technician_id: UUID, db: Session = Depends(get_db)):
     shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
@@ -249,9 +251,9 @@ def accept_applicant(shift_id: UUID, technician_id: UUID, db: Session = Depends(
     db.refresh(assignment)
     db.refresh(notif)
 
-    # Fire-and-forget WebSocket push to the technician
-    import asyncio
+    # Real-time WebSocket push to the technician
     notif_payload = {
+        "type": "notification",
         "id": str(notif.id),
         "title": notif.title,
         "body": notif.body,
@@ -260,11 +262,9 @@ def accept_applicant(shift_id: UUID, technician_id: UUID, db: Session = Depends(
         "is_read": False,
     }
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(notifier.send_to_user(str(technician_id), notif_payload))
-    except Exception:
-        pass  # WS push is best-effort
+        await notifier.send_personal_message(notif_payload, str(technician_id))
+    except Exception as e:
+        print(f"[WS push error] {e}")
 
     return {"message": "Applicant accepted successfully", "status": assignment.status.value}
 

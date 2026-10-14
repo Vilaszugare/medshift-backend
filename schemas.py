@@ -20,6 +20,16 @@ class TechnicianRegisterRequest(BaseModel):
     id_document: Optional[str] = None
     certificate: Optional[str] = None
 
+class ManagerRegisterRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    password: str
+    mobile_number: Optional[str] = None
+    job_title: Optional[str] = None
+    hospital_name: str
+    hospital_address: str
+
 class LoginRequest(BaseModel):
     email: str
     password: str
