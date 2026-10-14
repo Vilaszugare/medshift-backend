@@ -63,8 +63,10 @@ app.add_middleware(
         "https://lics-fry.loca.lt",
         "capacitor://localhost",
         "http://localhost",
-        "https://localhost"
+        "https://localhost",
+        "https://medshift-backend-1.onrender.com"
     ],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
