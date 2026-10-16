@@ -18,7 +18,7 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 
 # Required App Password with spaces removed
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "ulztfazvpnpurzom").replace(" ", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").replace(" ", "")
 
 # Sender Gmail Address (can be overridden via environment variable)
 SMTP_SENDER = os.getenv("SMTP_EMAIL", os.getenv("GMAIL_USER", "vilaszugare2004@gmail.com"))

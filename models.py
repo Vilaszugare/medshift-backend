@@ -56,6 +56,7 @@ class ManagerProfile(Base, TimestampMixin):
     last_name = Column(String(100), nullable=False)
     job_title = Column(String(100))
     mobile_number = Column(String(20), nullable=True)
+    fcm_token = Column(String(500), nullable=True)
     
     hospital = relationship("Hospital", back_populates="managers")
     shifts = relationship("Shift", back_populates="manager_user")
@@ -73,6 +74,7 @@ class TechnicianProfile(Base, TimestampMixin):
     id_document_url = Column(String(500), nullable=True)
     certificate_url = Column(String(500), nullable=True)
     verification_status = Column(String(50), default="pending")
+    fcm_token = Column(String(500), nullable=True)
     
     is_available = Column(Boolean, default=True, index=True)
     rating = Column(Float, default=0.0)
@@ -134,6 +136,45 @@ class CommunityPost(Base, TimestampMixin):
     
     manager = relationship("ManagerProfile")
     technician = relationship("TechnicianProfile")
+    likes = relationship("PostLike", back_populates="post", cascade="all, delete-orphan")
+    saved_by = relationship("SavedPost", back_populates="post", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan", order_by="Comment.created_at.asc()")
+
+# Post alias for CommunityPost
+Post = CommunityPost
+
+
+class PostLike(Base):
+    __tablename__ = "post_likes"
+    # Composite primary key consisting of post_id and user_id to enforce uniqueness
+    post_id = Column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    post = relationship("CommunityPost", back_populates="likes")
+
+
+class SavedPost(Base):
+    __tablename__ = "saved_posts"
+    # Composite primary key consisting of post_id and user_id to enforce uniqueness
+    post_id = Column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    post = relationship("CommunityPost", back_populates="saved_by")
+
+
+class Comment(Base):
+    __tablename__ = "post_comments"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_name = Column(String(255), nullable=True)
+    user_role = Column(String(100), nullable=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    post = relationship("CommunityPost", back_populates="comments")
 
 class IndianState(Base, TimestampMixin):
     __tablename__ = "indian_states"

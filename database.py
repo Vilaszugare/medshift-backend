@@ -23,7 +23,7 @@ poolclass = None
 if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 elif DATABASE_URL and "6543" in DATABASE_URL:
-    connect_args = {"client_encoding": "utf8"}
+    connect_args = {"client_encoding": "utf8", "prepare_threshold": None}
     poolclass = NullPool
 
 if poolclass:

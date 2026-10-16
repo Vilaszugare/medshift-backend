@@ -26,6 +26,10 @@ venv.bak/
 *.log
 seed_err.txt
 
+# Uploads
+uploads/*
+!uploads/**/.gitkeep
+
 # Editor and OS
 .vscode/
 .idea/

@@ -8,3 +8,5 @@ python-dotenv
 httpx
 redis
 email-validator
+firebase-admin
+python-multipart

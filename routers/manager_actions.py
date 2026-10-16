@@ -115,56 +115,7 @@ def create_shift(shift_in: schemas.ShiftCreate, db: Session = Depends(get_db)):
         duration=duration
     )
 
-@router.post("/community/posts", response_model=schemas.CommunityPostBase)
-def create_community_post(post_in: schemas.CommunityPostCreate, db: Session = Depends(get_db)):
-    is_manager = db.query(models.ManagerProfile).filter(models.ManagerProfile.id == post_in.author_id).first()
-    new_post = models.CommunityPost(
-        manager_id=post_in.author_id if is_manager else None,
-        technician_id=post_in.author_id if not is_manager else None,
-        content=post_in.content,
-        image_url=post_in.image_url
-    )
-    db.add(new_post)
-    db.commit()
-    db.refresh(new_post)
-    
-    return new_post
 
-@router.get("/community/posts")
-def get_community_posts(db: Session = Depends(get_db)):
-    posts = db.query(models.CommunityPost).order_by(models.CommunityPost.created_at.desc()).all()
-    result = []
-    for post in posts:
-        author_name = "Unknown"
-        initials = "U"
-        role = "User"
-        
-        if post.manager_id:
-            manager = db.query(models.ManagerProfile).filter(models.ManagerProfile.id == post.manager_id).first()
-            if manager:
-                author_name = f"{manager.first_name} {manager.last_name}"
-                initials = "".join([n[0] for n in author_name.split() if n]) if author_name else "M"
-                hospital = db.query(models.Hospital).filter(models.Hospital.id == manager.hospital_id).first()
-                hospital_name = hospital.name if hospital else "Hospital"
-                role_title = manager.job_title or "CMO"
-                role = f"{role_title} · {hospital_name}"
-        elif post.technician_id:
-            tech = db.query(models.TechnicianProfile).filter(models.TechnicianProfile.id == post.technician_id).first()
-            if tech:
-                author_name = tech.full_name
-                initials = "".join([n[0] for n in author_name.split() if n]) if author_name else "T"
-                role = tech.title or "Technician"
-                    
-        result.append({
-            "id": post.id,
-            "author": author_name,
-            "initials": initials,
-            "role": role,
-            "content": post.content,
-            "created_at": post.created_at,
-            "image_url": post.image_url
-        })
-    return result
 
 @router.get("/shifts/available")
 def get_available_shifts(db: Session = Depends(get_db)):
